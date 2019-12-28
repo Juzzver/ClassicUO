@@ -304,7 +304,15 @@ namespace ClassicUO
 
             if (World.Player != null)
             {
-                if (World.Player.X > PacketHandlers.startWeatherPosition + 150)
+                var playerPosX = World.Player.X;
+                var playerPosY = World.Player.Y;
+                var startPosX = PacketHandlers.startWeatherPositionX;
+                var startPosY = PacketHandlers.startWeatherPositionY;
+
+                if (playerPosX > startPosX + 150 
+                    || playerPosX < startPosX - 150 
+                    || playerPosY > startPosY + 150 
+                    || playerPosY < startPosY - 150)
                 {
                     var scene = CUOEnviroment.Client.GetScene<GameScene>();
                     if (scene == null)

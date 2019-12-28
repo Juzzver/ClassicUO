@@ -1620,7 +1620,8 @@ namespace ClassicUO.Network
         {
         }
 
-        public static int startWeatherPosition { get; set; }
+        public static int startWeatherPositionX { get; set; }
+        public static int startWeatherPositionY { get; set; }
         private static void SetWeather(Packet p)
         {
             var scene = CUOEnviroment.Client.GetScene<GameScene>();
@@ -1652,7 +1653,6 @@ namespace ClassicUO.Network
                         if (showMessage)
                         {
                             GameActions.Print("It begins to rain.", 0, MessageType.System, 3, false);
-                            startWeatherPosition = World.Player.X;
                         }
                         break;
 
@@ -1660,7 +1660,6 @@ namespace ClassicUO.Network
                         if (showMessage)
                         {
                             GameActions.Print("A fierce storm approaches.", 0, MessageType.System, 3, false);
-                            startWeatherPosition = World.Player.X;
                         }
                         break;
 
@@ -1668,7 +1667,6 @@ namespace ClassicUO.Network
                         if (showMessage)
                         {
                             GameActions.Print("It begins to snow.", 0, MessageType.System, 3, false);
-                            startWeatherPosition = World.Player.X;
                         }
                         break;
 
@@ -1676,7 +1674,6 @@ namespace ClassicUO.Network
                         if (showMessage)
                         {
                             GameActions.Print("A storm is brewing.", 0, MessageType.System, 3, false);
-                            startWeatherPosition = World.Player.X;
                         }
                         break;
 
@@ -1685,6 +1682,8 @@ namespace ClassicUO.Network
                         weather.Timer = 0;
                         break;
                 }
+                startWeatherPositionX = World.Player.X;
+                startWeatherPositionY = World.Player.Y;
             }
         }
 
