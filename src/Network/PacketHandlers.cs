@@ -353,7 +353,7 @@ namespace ClassicUO.Network
                     World.Player.Mana = p.ReadUShort();
                     World.Player.ManaMax = p.ReadUShort();
                     World.Player.Gold = p.ReadUInt();
-                    World.Player.PhysicalResistence = p.ReadUShort();
+                    World.Player.PhysicalResistance = (short) p.ReadUShort();
                     World.Player.Weight = p.ReadUShort();
 
 
@@ -407,10 +407,10 @@ namespace ClassicUO.Network
 
                     if (type >= 4) //AOS
                     {
-                        World.Player.FireResistance = p.ReadUShort();
-                        World.Player.ColdResistance = p.ReadUShort();
-                        World.Player.PoisonResistance = p.ReadUShort();
-                        World.Player.EnergyResistance = p.ReadUShort();
+                        World.Player.FireResistance = (short) p.ReadUShort();
+                        World.Player.ColdResistance = (short) p.ReadUShort();
+                        World.Player.PoisonResistance = (short) p.ReadUShort();
+                        World.Player.EnergyResistance = (short) p.ReadUShort();
                         World.Player.Luck = p.ReadUShort();
                         World.Player.DamageMin = p.ReadUShort();
                         World.Player.DamageMax = p.ReadUShort();
@@ -1556,13 +1556,15 @@ namespace ClassicUO.Network
         {
             if (World.Player != null && CUOEnviroment.Client.Scene is LoginScene)
             {
-                CUOEnviroment.Client.SetScene(new GameScene());
+                GameScene scene = new GameScene();
+                CUOEnviroment.Client.SetScene(scene);
 
                 NetClient.Socket.Send(new PStatusRequest(World.Player));
 
                 NetClient.Socket.Send(new POpenChat(""));
 
                 NetClient.Socket.Send(new PSkillsRequest(World.Player));
+                scene.DoubleClickDelayed(World.Player);
 
                 if (UOFileManager.ClientVersion >= ClientVersions.CV_306E)
                     NetClient.Socket.Send(new PClientType());
