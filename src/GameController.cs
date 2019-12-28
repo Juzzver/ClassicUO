@@ -302,6 +302,20 @@ namespace ClassicUO
             UIManager.Update(gameTime.TotalGameTime.TotalMilliseconds, gameTime.ElapsedGameTime.TotalMilliseconds);
             Plugin.Tick();
 
+            if (World.Player != null)
+            {
+                if (World.Player.X > PacketHandlers.startWeatherPosition + 150)
+                {
+                    var scene = CUOEnviroment.Client.GetScene<GameScene>();
+                    if (scene == null)
+                        return;
+
+                    var weather = scene.Weather;
+                    weather.Reset();
+                }
+            }
+
+
             if (_scene != null && _scene.IsLoaded && !_scene.IsDestroyed)
             {
                 Profiler.EnterContext("Update");

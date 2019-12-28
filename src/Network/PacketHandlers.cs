@@ -1618,6 +1618,7 @@ namespace ClassicUO.Network
         {
         }
 
+        public static int startWeatherPosition { get; set; }
         private static void SetWeather(Packet p)
         {
             var scene = CUOEnviroment.Client.GetScene<GameScene>();
@@ -1625,44 +1626,63 @@ namespace ClassicUO.Network
                 return;
 
             var weather = scene.Weather;
-
-            weather.Reset();
-
-            byte type = p.ReadByte();
-            weather.Type = type;
-            weather.Count = p.ReadByte();
-
-            bool showMessage = (weather.Count > 0);
-
-            if (weather.Count > 70)
-                weather.Count = 70;
-
-            weather.Temperature = p.ReadByte();
-            weather.Timer = Time.Ticks + Constants.WEATHER_TIMER;
-            weather.Generate();
-
-            switch (type)
+            
+            if (weather.Timer == 0)
             {
-                case 0:
-                    if (showMessage)
-                        GameActions.Print("It begins to rain.", 0, MessageType.System, 3, false );
-                    break;
-                case 1:
-                    if (showMessage)
-                        GameActions.Print("A fierce storm approaches.", 0, MessageType.System, 3, false);
-                    break;
-                case 2:
-                    if (showMessage)
-                        GameActions.Print("It begins to snow.", 0, MessageType.System, 3, false);
-                    break;
-                case 3:
-                    if (showMessage)
-                        GameActions.Print("A storm is brewing.", 0, MessageType.System, 3, false);
-                    break;
-                case 0xFE:
-                case 0xFF:
-                    weather.Timer = 0;
-                    break;
+                weather.Reset();
+
+                byte type = p.ReadByte();
+                weather.Type = type;
+                weather.Count = p.ReadByte();
+
+                bool showMessage = (weather.Count > 0);
+
+                if (weather.Count > 70)
+                    weather.Count = 70;
+
+                weather.Temperature = p.ReadByte();
+                weather.Timer = Time.Ticks + Constants.WEATHER_TIMER;
+                weather.Generate();
+
+                switch (type)
+                {
+                    case 0:
+                        if (showMessage)
+                        {
+                            GameActions.Print("It begins to rain.", 0, MessageType.System, 3, false);
+                            startWeatherPosition = World.Player.X;
+                        }
+                        break;
+
+                    case 1:
+                        if (showMessage)
+                        {
+                            GameActions.Print("A fierce storm approaches.", 0, MessageType.System, 3, false);
+                            startWeatherPosition = World.Player.X;
+                        }
+                        break;
+
+                    case 2:
+                        if (showMessage)
+                        {
+                            GameActions.Print("It begins to snow.", 0, MessageType.System, 3, false);
+                            startWeatherPosition = World.Player.X;
+                        }
+                        break;
+
+                    case 3:
+                        if (showMessage)
+                        {
+                            GameActions.Print("A storm is brewing.", 0, MessageType.System, 3, false);
+                            startWeatherPosition = World.Player.X;
+                        }
+                        break;
+
+                    case 0xFE:
+                    case 0xFF:
+                        weather.Timer = 0;
+                        break;
+                }
             }
         }
 
