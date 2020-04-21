@@ -1,54 +1,52 @@
 #region license
-
-//  Copyright (C) 2019 ClassicUO Development Community on Github
-//
-//	This project is an alternative client for the game Ultima Online.
-//	The goal of this is to develop a lightweight client considering 
-//	new technologies.  
-//      
+// Copyright (C) 2020 ClassicUO Development Community on Github
+// 
+// This project is an alternative client for the game Ultima Online.
+// The goal of this is to develop a lightweight client considering
+// new technologies.
+// 
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  This program is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //  GNU General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #endregion
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 using ClassicUO.Game.Data;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.Gumps;
-using ClassicUO.Utility;
+using ClassicUO.Network;
+using ClassicUO.Utility.Logging;
+using static ClassicUO.Network.NetClient;
 
 namespace ClassicUO.Game.GameObjects
 {
-    internal abstract class Entity : GameObject
+    internal abstract class Entity : GameObject, IEquatable<Entity>
     {
         private Direction _direction;
         private Item[] _equipment;
 
-        protected Entity(Serial serial)
+        protected Entity(uint serial)
         {
             Serial = serial;
-            Items = new EntityCollection<Item>();
         }
 
 
-
+        public uint LastStepTime;
 
         protected long LastAnimationChangeTime;
 
-        public EntityCollection<Item> Items { get; protected set; }
 
         public bool HasEquipment => _equipment != null;
 
@@ -58,7 +56,7 @@ namespace ClassicUO.Game.GameObjects
             set => _equipment = value;
         }
 
-        public Serial Serial;
+        public uint Serial;
         public bool IsClicked;
 
         public ushort Hits;
@@ -87,22 +85,22 @@ namespace ClassicUO.Game.GameObjects
         public bool Exists => World.Contains(Serial);
 
 
-        public void FixHue(Hue hue)
+        public void FixHue(ushort hue)
         {
-            ushort fixedColor = (ushort)(hue & 0x3FFF);
+            ushort fixedColor = (ushort) (hue & 0x3FFF);
 
             if (fixedColor != 0)
             {
                 if (fixedColor >= 0x0BB8)
                     fixedColor = 1;
-                fixedColor |= (ushort)(hue & 0xC000);
+                fixedColor |= (ushort) (hue & 0xC000);
             }
             else
-                fixedColor = (ushort)(hue & 0x8000);
+                fixedColor = (ushort) (hue & 0x8000);
 
             Hue = fixedColor;
         }
-      
+
         public override void Update(double totalMS, double frameMS)
         {
             base.Update(totalMS, frameMS);
@@ -113,7 +111,12 @@ namespace ClassicUO.Game.GameObjects
 
                 //if (gump == null)
                 {
+                    if (SerialHelper.IsMobile(Serial))
+                    {
+                        Socket.Send(new PNameRequest(Serial));
+                    }
                     UIManager.Add(new NameOverheadGump(this));
+
                     ObjectHandlesOpened = true;
                 }
             }
@@ -127,20 +130,22 @@ namespace ClassicUO.Game.GameObjects
             {
                 var minColor = 0xFFFF;
 
-                foreach (Item i in Items)
+                for (var i = Items; i != null; i = i.Next)
                 {
-                    if (i.Graphic == graphic)
+                    Item it = (Item) i;
+
+                    if (it.Graphic == graphic)
                     {
-                        if (i.Hue < minColor)
+                        if (it.Hue < minColor)
                         {
-                            item = i;
-                            minColor = i.Hue;
+                            item = it;
+                            minColor = it.Hue;
                         }
                     }
 
-                    if (i.Container.IsValid)
+                    if (SerialHelper.IsValid(it.Container))
                     {
-                        Item found = i.FindItem(graphic, hue);
+                        Item found = it.FindItem(graphic, hue);
 
                         if (found != null && found.Hue < minColor)
                         {
@@ -152,14 +157,16 @@ namespace ClassicUO.Game.GameObjects
             }
             else
             {
-                foreach (Item i in Items)
+                for (var i = Items; i != null; i = i.Next)
                 {
-                    if (i.Graphic == graphic && i.Hue == hue)
-                        item = i;
+                    Item it = (Item) i;
 
-                    if (i.Container.IsValid)
+                    if (it.Graphic == graphic && it.Hue == hue)
+                        item = it;
+
+                    if (SerialHelper.IsValid(it.Container))
                     {
-                        Item found = i.FindItem(graphic, hue);
+                        Item found = it.FindItem(graphic, hue);
 
                         if (found != null)
                             item = found;
@@ -170,21 +177,103 @@ namespace ClassicUO.Game.GameObjects
             return item;
         }
 
-        public Item FindItemByLayer(Layer layer)
+        public Item GetItemByGraphic(ushort graphic, bool deepsearch = false)
         {
-            foreach (Item i in Items)
+            for (var i = Items; i != null; i = i.Next)
             {
-                if (i.Layer == layer)
-                    return i;
+                Item item = (Item) i;
+
+                if (item.Graphic == graphic)
+                    return item;
+
+                if (deepsearch && !item.IsEmpty)
+                {
+                    for (var ic = Items; ic != null; ic = ic.Next)
+                    {
+                        Item childItem = (Item) ic;
+
+                        Item res = childItem.GetItemByGraphic(graphic, deepsearch);
+
+                        if (res != null)
+                            return res;
+                    }
+                }
             }
 
             return null;
         }
 
-        public void ProcessDelta()
+        public Item FindItemByLayer(Layer layer)
         {
-            Items.ProcessDelta();
+            for (var i = Items; i != null; i = i.Next)
+            {
+                Item it = (Item) i;
+
+                if (it.Layer == layer)
+                    return it;
+            }
+
+            return null;
         }
+
+        //public new void Clear()
+        //{
+        //    if (!IsEmpty)
+        //    {
+        //        var obj = Items;
+
+        //        while (obj != null)
+        //        {
+        //            var next = obj.Next;
+        //            Item it = (Item) obj;
+
+        //            it.Container = 0;
+        //            World.Items.Remove(it);
+
+        //            Remove(obj);
+
+        //            obj = next;
+        //        }
+        //    }
+        //}
+
+        public void ClearUnequipped()
+        {
+            if (!IsEmpty)
+            {
+                LinkedObject new_first = null;
+                var obj = Items;
+
+                while (obj != null)
+                {
+                    var next = obj.Next;
+
+                    Item it = (Item) obj;
+
+                    if (it.Layer != 0)
+                    {
+                        if (new_first == null)
+                        {
+                            new_first = obj;
+                        }
+                    }
+                    else
+                    {
+                        it.Container = 0;
+                        World.Items.Remove(it);
+                        it.Destroy();
+                        Remove(obj);
+                    }
+                    
+                    obj = next;
+                }
+
+
+                Items = new_first;
+
+            }
+        }
+
 
         public override void Destroy()
         {
@@ -193,23 +282,38 @@ namespace ClassicUO.Game.GameObjects
         }
 
 
-        public static implicit operator Serial(Entity entity)
-        {
-            return entity.Serial;
-        }
-
         public static implicit operator uint(Entity entity)
         {
             return entity.Serial;
         }
 
+        public static bool operator ==(Entity e, Entity s)
+        {
+            return Equals(e, s);
+        }
+
+        public static bool operator !=(Entity e, Entity s)
+        {
+            return !Equals(e, s);
+        }
+
+        public bool Equals(Entity e)
+        {
+            return e != null && Serial == e.Serial;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Entity ent && Equals(ent);
+        }
+
         public override int GetHashCode()
         {
-            return (int) Serial.Value;
+            return (int) Serial;
         }
 
         public abstract void ProcessAnimation(out byte dir, bool evalutate = false);
 
-        public abstract Graphic GetGraphicForAnimation();
+        public abstract ushort GetGraphicForAnimation();
     }
 }

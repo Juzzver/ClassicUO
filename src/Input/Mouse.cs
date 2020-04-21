@@ -1,25 +1,25 @@
 ﻿#region license
-
-//  Copyright (C) 2019 ClassicUO Development Community on Github
-//
-//	This project is an alternative client for the game Ultima Online.
-//	The goal of this is to develop a lightweight client considering 
-//	new technologies.  
-//      
+// Copyright (C) 2020 ClassicUO Development Community on Github
+// 
+// This project is an alternative client for the game Ultima Online.
+// The goal of this is to develop a lightweight client considering
+// new technologies.
+// 
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  This program is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //  GNU General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #endregion
+
+using System;
 
 using Microsoft.Xna.Framework;
 
@@ -45,6 +45,8 @@ namespace ClassicUO.Input
 
         public static bool MButtonPressed { get; set; }
 
+        public static bool XButtonPressed { get; set; }
+
         public static bool IsDragging { get; set; }
 
         public static Point Position;
@@ -56,8 +58,6 @@ namespace ClassicUO.Input
         public static Point RDropPosition;
 
         public static Point MDropPosition;
-
-        public static Point LastClickPosition;
 
         public static Point LDroppedOffset => LButtonPressed ? RealPosition - LDropPosition : Point.Zero;
 
@@ -83,12 +83,21 @@ namespace ClassicUO.Input
             if (!MouseInWindow)
             {
                 SDL.SDL_GetGlobalMouseState(out int x, out int y);
-                SDL.SDL_GetWindowPosition(CUOEnviroment.Client.Window.Handle, out int winX, out int winY);
+                SDL.SDL_GetWindowPosition(Client.Game.Window.Handle, out int winX, out int winY);
                 Position.X = x - winX;
                 Position.Y = y - winY;
             }
+            //else if (SDL.SDL_GetRelativeMouseMode() == SDL.SDL_bool.SDL_TRUE)
+            //{
+            //    Console.WriteLine("MOUSE RELATIVE!");
+            //    SDL.SDL_GetRelativeMouseState(out Position.X, out Position.Y);
+            //}
             else
                 SDL.SDL_GetMouseState(out Position.X, out Position.Y);
+
+            // Scale the mouse coordinates for the faux-backbuffer
+            Position.X = (int) ((double) Position.X * Client.Game.GraphicManager.PreferredBackBufferWidth / Client.Game.Window.ClientBounds.Width);
+            Position.Y = (int) ((double) Position.Y * Client.Game.GraphicManager.PreferredBackBufferHeight / Client.Game.Window.ClientBounds.Height);
 
             IsDragging = LButtonPressed || RButtonPressed || MButtonPressed;
             RealPosition = Position;

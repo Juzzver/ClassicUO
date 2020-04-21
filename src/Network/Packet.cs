@@ -1,24 +1,22 @@
 ﻿#region license
-
-//  Copyright (C) 2019 ClassicUO Development Community on Github
-//
-//	This project is an alternative client for the game Ultima Online.
-//	The goal of this is to develop a lightweight client considering 
-//	new technologies.  
-//      
+// Copyright (C) 2020 ClassicUO Development Community on Github
+// 
+// This project is an alternative client for the game Ultima Online.
+// The goal of this is to develop a lightweight client considering
+// new technologies.
+// 
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  This program is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //  GNU General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #endregion
 
 using System;
@@ -44,7 +42,7 @@ namespace ClassicUO.Network
             IsDynamic = PacketsTable.GetPacketLength(ID) < 0;
         }
 
-        protected override byte this[int index]
+        public override byte this[int index]
         {
             [MethodImpl(256)]
             get
@@ -138,12 +136,12 @@ namespace ClassicUO.Network
             return _sb.ToString();
         }
 
-        public string ReadASCII(int length, bool exitIfNull = false)
+        public string ReadASCII(int length)
         {
             if (EnsureSize(length))
                 return Empty;
 
-            if (Position + length >= Length)
+            if (Position + length > Length)
             {
                 length = Length - Position - 1;
             }
@@ -170,35 +168,90 @@ namespace ClassicUO.Network
 
         public string ReadUTF8StringSafe()
         {
-            if (Position >= Length) return Empty;
+            _sb.Clear();
 
-            int count = 0;
+            if (Position >= Length)
+                return Empty;
+
             int index = Position;
 
-            while (index < Length && _data[index++] != 0) ++count;
+            while (index < Length)
+            {
+                byte b = _data[index++];
+
+                if (b == 0)
+                    break;
+            }
+
+            string s = Encoding.UTF8.GetString(_data, Position, index - Position - 1);
+
+            Seek(index);
 
             index = 0;
 
-            var buffer = new byte[count];
-            int val = 0;
+            for (int i = 0; i < s.Length && StringHelper.IsSafeChar(s[i]); i++, index++)
+            {
 
-            while (Position < Length && (val = _data[Position++]) != 0) buffer[index++] = (byte) val;
+            }
 
-            string s = Encoding.UTF8.GetString(buffer);
+            if (index == s.Length)
+                return s;
 
-            bool isSafe = true;
-
-            for (int i = 0; isSafe && i < s.Length; ++i) isSafe = StringHelper.IsSafeChar(s[i]);
-
-            if (isSafe) return s;
-
-            StringBuilder sb = new StringBuilder(s.Length);
-
-            for (int i = 0; i < s.Length; ++i)
+            for (int i = 0; i < s.Length; i++)
+            {
                 if (StringHelper.IsSafeChar(s[i]))
-                    sb.Append(s[i]);
+                    _sb.Append(s[i]);
+            }
 
-            return sb.ToString();
+            return _sb.ToString();
+        }
+
+        public string ReadUTF8StringSafe(int length)
+        {
+            _sb.Clear();
+
+            if (length <= 0 || EnsureSize(length))
+            {
+                return Empty;
+            }
+
+            if (Position + length > Length)
+            {
+                length = Length - Position - 1;
+            }
+
+            int index = Position;
+            int toread = Position + length;
+
+            while (index < toread)
+            {
+                byte b = _data[index++];
+
+                if (b == 0)
+                    break;
+            }
+
+            string s = Encoding.UTF8.GetString(_data, Position, length - 1);
+
+            Skip(length);
+
+            index = 0;
+
+            for (int i = 0; i < s.Length && StringHelper.IsSafeChar(s[i]); i++, index++)
+            {
+
+            }
+
+            if (index == s.Length)
+                return s;
+
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (StringHelper.IsSafeChar(s[i]))
+                    _sb.Append(s[i]);
+            }
+
+            return _sb.ToString();
         }
 
         public string ReadUnicode()

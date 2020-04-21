@@ -1,30 +1,25 @@
 ﻿#region license
-
-//  Copyright (C) 2019 ClassicUO Development Community on Github
-//
-//	This project is an alternative client for the game Ultima Online.
-//	The goal of this is to develop a lightweight client considering 
-//	new technologies.  
-//      
+// Copyright (C) 2020 ClassicUO Development Community on Github
+// 
+// This project is an alternative client for the game Ultima Online.
+// The goal of this is to develop a lightweight client considering
+// new technologies.
+// 
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  This program is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //  GNU General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #endregion
 
-using System;
 using System.Collections.Generic;
-
-using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
@@ -53,7 +48,7 @@ namespace ClassicUO.Game
     internal static class World
     {
         private static readonly EffectManager _effectManager = new EffectManager();
-        private static readonly List<Serial> _toRemove = new List<Serial>();
+        private static readonly List<uint> _toRemove = new List<uint>();
 
         public static Point RangeSize;
 
@@ -86,9 +81,12 @@ namespace ClassicUO.Game
 
         public static JournalManager Journal { get; } = new JournalManager();
 
-        public static CustomHouseManager CustomHouseManager;
+        public static HouseCustomizationManager CustomHouseManager;
 
         public static WorldMapEntityManager WMapManager = new WorldMapEntityManager();
+
+        public static ActiveSpellIconsManager ActiveSpellIcons = new ActiveSpellIconsManager();
+
 
         public static int MapIndex
         {
@@ -111,20 +109,25 @@ namespace ClassicUO.Game
                     {
                         if (MapIndex >= 0) Map.Destroy();
 
-                        Position position = Player.Position;
+                        ushort x = Player.X;
+                        ushort y = Player.Y;
+                        sbyte z = Player.Z;
+
                         Map = null;
 
                         Map = new Map.Map(value)
                         {
-                            Center = new Point(position.X, position.Y)
+                            Center = new Point(x, y)
                         };
                         Map.Initialize();
 
-                        Player.Position = position;
+                        Player.X = x;
+                        Player.Y = y;
+                        Player.Z = z;
+                        Player.UpdateScreenPosition();
                         Player.AddToTile();
 
                         Player.ClearSteps();
-                        Player.ProcessDelta();
                     }
                     else
                     {
@@ -166,9 +169,7 @@ namespace ClassicUO.Game
                 {
                     for (int y = 0; y < 8; y++)
                     {
-                        Tile tile = chunk.Tiles[x, y];
-
-                        for (GameObject obj = tile.FirstNode; obj != null; obj = obj.Right)
+                        for (GameObject obj = chunk.GetHeadObject(x, y); obj != null; obj = obj.TNext)
                         {
                             obj.UpdateGraphicBySeason();
                         }
@@ -176,8 +177,7 @@ namespace ClassicUO.Game
                 }
             }
 
-            if (ProfileManager.Current.EnableCombatMusic)
-                CUOEnviroment.Client.Scene.Audio.PlayMusic(music);
+            Client.Game.Scene.Audio.PlayMusic(music, true);
         }
 
 
@@ -194,6 +194,31 @@ namespace ClassicUO.Game
 
                     if (mob.IsDestroyed)
                         _toRemove.Add(mob);
+                    else
+                    {
+                        if (mob.NotorietyFlag == NotorietyFlag.Ally)
+                        {
+                            WMapManager.AddOrUpdate(
+                                                    mob.Serial,
+                                                    mob.X,
+                                                    mob.Y,
+                                                    Utility.MathHelper.PercetangeOf(mob.Hits, mob.HitsMax),
+                                                    MapIndex,
+                                                    true,
+                                                    mob.Name);
+                        }
+                        else if (Party.Leader != 0 && Party.Contains(mob))
+                        {
+                            WMapManager.AddOrUpdate(
+                                                    mob.Serial,
+                                                    mob.X,
+                                                    mob.Y,
+                                                    Utility.MathHelper.PercetangeOf(mob.Hits, mob.HitsMax),
+                                                    MapIndex,
+                                                    false,
+                                                    mob.Name);
+                        }
+                    }
                 }
 
                 if (_toRemove.Count != 0)
@@ -201,7 +226,6 @@ namespace ClassicUO.Game
                     for (int i = 0; i < _toRemove.Count; i++)
                         Mobiles.Remove(_toRemove[i]);
 
-                    Mobiles.ProcessDelta();
                     _toRemove.Clear();
                 }
 
@@ -229,7 +253,6 @@ namespace ClassicUO.Game
                     for (int i = 0; i < _toRemove.Count; i++)
                         Items.Remove(_toRemove[i]);
 
-                    Items.ProcessDelta();
                     _toRemove.Clear();
                 }
 
@@ -240,21 +263,21 @@ namespace ClassicUO.Game
             }
         }
 
-        public static bool Contains(Serial serial)
+        public static bool Contains(uint serial)
         {
-            if (serial.IsItem) return Items.Contains(serial);
+            if (SerialHelper.IsItem(serial)) return Items.Contains(serial);
 
-            return serial.IsMobile && Mobiles.Contains(serial);
+            return SerialHelper.IsMobile(serial) && Mobiles.Contains(serial);
         }
 
-        public static Entity Get(Serial serial)
+        public static Entity Get(uint serial)
         {
-            if (serial.IsItem) return Items.Get(serial);
+            if (SerialHelper.IsItem(serial)) return Items.Get(serial);
 
-            return serial.IsMobile ? Mobiles.Get(serial) : null;
+            return SerialHelper.IsMobile(serial) ? Mobiles.Get(serial) : null;
         }
 
-        public static Item GetOrCreateItem(Serial serial)
+        public static Item GetOrCreateItem(uint serial)
         {
             Item item = Items.Get(serial);
 
@@ -267,20 +290,20 @@ namespace ClassicUO.Game
             return item;
         }
 
-        public static Mobile GetOrCreateMobile(Serial serial)
+        public static Mobile GetOrCreateMobile(uint serial)
         {
             Mobile mob = Mobiles.Get(serial);
 
             if (mob == null /*|| mob.IsDestroyed*/)
             {
                 //Mobiles.Remove(serial);
-                mob = new Mobile(serial);
+                mob = Mobile.Create(serial);
             }
 
             return mob;
         }
 
-        public static bool RemoveItem(Serial serial, bool forceRemove = false)
+        public static bool RemoveItem(uint serial, bool forceRemove = false)
         {
             Item item = Items.Get(serial);
 
@@ -300,11 +323,12 @@ namespace ClassicUO.Game
                 }
             }
 
-            foreach (Item i in item.Items)
-                RemoveItem(i, forceRemove);
+            for (var i = item.Items; i != null; i = i.Next)
+            {
+                RemoveItem(i as Item, forceRemove);
+            }
 
-
-            item.Items.Clear();
+            item.Clear();
             item.Destroy();
 
             if (forceRemove)
@@ -313,17 +337,19 @@ namespace ClassicUO.Game
             return true;
         }
 
-        public static bool RemoveMobile(Serial serial, bool forceRemove = false)
+        public static bool RemoveMobile(uint serial, bool forceRemove = false)
         {
             Mobile mobile = Mobiles.Get(serial);
 
             if (mobile == null)
                 return false;
 
-            foreach (Item i in mobile.Items)
-                RemoveItem(i, forceRemove);
+            for (var i = mobile.Items; i != null; i = i.Next)
+            {
+                RemoveItem(i as Item, forceRemove);
+            }
 
-            mobile.Items.Clear();
+            mobile.Clear();
             mobile.Destroy();
 
             if (forceRemove)
@@ -337,12 +363,16 @@ namespace ClassicUO.Game
             _effectManager.Add(effect);
         }
 
-        public static void AddEffect(GraphicEffectType type, Serial source, Serial target, Graphic graphic, Hue hue, Position srcPos, Position targPos, byte speed, int duration, bool fixedDir, bool doesExplode, bool hasparticles, GraphicEffectBlendMode blendmode)
+        public static void AddEffect(GraphicEffectType type, uint source, uint target,
+                                     ushort graphic, ushort hue, 
+                                     ushort srcX, ushort srcY, sbyte srcZ,
+                                     ushort targetX, ushort targetY, sbyte targetZ,
+                                     byte speed, int duration, bool fixedDir, bool doesExplode, bool hasparticles, GraphicEffectBlendMode blendmode)
         {
-            _effectManager.Add(type, source, target, graphic, hue, srcPos, targPos, speed, duration, fixedDir, doesExplode, hasparticles, blendmode);
+            _effectManager.Add(type, source, target, graphic, hue, srcX, srcY, srcZ, targetX, targetY, targetZ, speed, duration, fixedDir, doesExplode, hasparticles, blendmode);
         }
 
-        public static Serial SearchObject(SCAN_TYPE_OBJECT scanType, SCAN_MODE_OBJECT scanMode)
+        public static uint SearchObject(SCAN_TYPE_OBJECT scanType, SCAN_MODE_OBJECT scanMode)
         {
             Entity first = null, selected = null;
             int distance = int.MaxValue;
@@ -616,6 +646,16 @@ namespace ClassicUO.Game
 
         public static void Clear()
         {
+            foreach (Mobile mobile in Mobiles)
+            {
+                mobile.Destroy();
+            }
+
+            foreach (Item item in Items)
+            {
+                item.Destroy();
+            }
+
             HouseManager.Clear();
             Items.Clear();
             Mobiles.Clear();
@@ -631,7 +671,7 @@ namespace ClassicUO.Game
             Party.Clear();
             ServerName = string.Empty;
             TargetManager.LastAttack = 0;
-            Chat.PromptData = default;
+            MessageManager.PromptData = default;
             _effectManager.Clear();
             _toRemove.Clear();
             CorpseManager.Clear();
@@ -643,6 +683,10 @@ namespace ClassicUO.Game
 
             Journal.Clear();
             WorldTextManager.Clear();
+            ActiveSpellIcons.Clear();
+
+            SkillsRequested = false;
+
         }
 
         private static void InternalMapChangeClear(bool noplayer)
@@ -664,7 +708,16 @@ namespace ClassicUO.Game
                 }
 
                 RemoveItem(item);
+
+                _toRemove.Add(item);
             }
+
+            foreach (var serial in _toRemove)
+            {
+                Items.Remove(serial);
+            }
+
+            _toRemove.Clear();
 
             foreach (Mobile mob in Mobiles)
             {
@@ -675,7 +728,16 @@ namespace ClassicUO.Game
                 }
 
                 RemoveMobile(mob);
+
+                _toRemove.Add(mob);
             }
+
+            foreach (var serial in _toRemove)
+            {
+                Mobiles.Remove(serial);
+            }
+
+            _toRemove.Clear();
         }
     }
 }

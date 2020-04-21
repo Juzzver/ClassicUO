@@ -1,34 +1,30 @@
 #region license
-
-//  Copyright (C) 2019 ClassicUO Development Community on Github
-//
-//	This project is an alternative client for the game Ultima Online.
-//	The goal of this is to develop a lightweight client considering 
-//	new technologies.  
-//      
+// Copyright (C) 2020 ClassicUO Development Community on Github
+// 
+// This project is an alternative client for the game Ultima Online.
+// The goal of this is to develop a lightweight client considering
+// new technologies.
+// 
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  This program is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //  GNU General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #endregion
 
 using System;
 using System.Runtime.CompilerServices;
 
 using ClassicUO.Configuration;
+using ClassicUO.Game.Data;
 using ClassicUO.Game.Map;
-using ClassicUO.Game.Scenes;
-using ClassicUO.Interfaces;
-using ClassicUO.IO;
 using ClassicUO.IO.Resources;
 using ClassicUO.Renderer;
 
@@ -38,71 +34,32 @@ using IUpdateable = ClassicUO.Interfaces.IUpdateable;
 
 namespace ClassicUO.Game.GameObjects
 {
-    internal abstract class BaseGameObject
+    internal abstract class BaseGameObject : LinkedObject
     {
         public Point RealScreenPosition;
     }
 
-
     internal abstract partial class GameObject : BaseGameObject, IUpdateable
     {
-        private Position _position = Position.INVALID;
         private Point _screenPosition;
 
-
-
-        public bool IsPositionChanged { get; protected set; }
-
-        public TextContainer TextContainer { get; private set; }
-
-        public Position Position
-        {
-            get => _position;
-            [MethodImpl(256)]
-            set
-            {
-                if (_position != value)
-                {
-                    _position = value;
-                    _screenPosition.X = (_position.X - _position.Y) * 22;
-                    _screenPosition.Y = (_position.X + _position.Y) * 22 - (_position.Z << 2);
-                    IsPositionChanged = true;
-                    OnPositionChanged();
-                }
-            }
-        }
-
-        public ushort X
-        {
-            get => Position.X;
-            //set => Position = new Position(value, Position.Y, Position.Z);
-        }
-
-        public ushort Y
-        {
-            get => Position.Y;
-            //set => Position = new Position(Position.X, value, Position.Z);
-        }
-
-        public sbyte Z
-        {
-            get => Position.Z;
-            //set => Position = new Position(Position.X, Position.Y, value);
-        }
-
-        public Hue Hue;
-        public Graphic Graphic;
+        public ushort X, Y;
+        public sbyte Z;
+        public ushort Hue;
+        public ushort Graphic;
         public sbyte AnimIndex;
         public int CurrentRenderIndex;
         public byte UseInRender;
         public short PriorityZ;
-        public GameObject Left;
-        public GameObject Right;
+        public GameObject TPrevious;
+        public GameObject TNext;
         public Vector3 Offset;
-
+        // FIXME: remove it
+        public sbyte FoliageIndex = -1;
 
         public bool IsDestroyed { get; protected set; }
-
+        public bool IsPositionChanged { get; protected set; }
+        public TextContainer TextContainer { get; private set; }
         public int Distance
         {
             [MethodImpl(256)]
@@ -135,8 +92,6 @@ namespace ClassicUO.Game.GameObjects
             }
         }
 
-        public Tile Tile { get; private set; }
-    
 
         public virtual void Update(double totalMS, double frameMS)
         {
@@ -147,13 +102,11 @@ namespace ClassicUO.Game.GameObjects
         {
             if (World.Map != null)
             {
-                if (Position != Position.INVALID)
-                    Tile?.RemoveGameObject(this);
+                RemoveFromTile();
 
                 if (!IsDestroyed)
                 {
-                    Tile = World.Map.GetTile(x, y);
-                    Tile?.AddGameObject(this);
+                    World.Map.GetChunk(x, y)?.AddGameObject(this, x % 8, y % 8);
                 }
             }
         }
@@ -164,35 +117,32 @@ namespace ClassicUO.Game.GameObjects
             AddToTile(X, Y);
         }
 
-        [MethodImpl(256)]
-        public void AddToTile(Tile tile)
-        {
-            if (World.Map != null)
-            {
-                if (Position != Position.INVALID)
-                    Tile?.RemoveGameObject(this);
-
-                if (!IsDestroyed)
-                {
-                    Tile = tile;
-                    Tile?.AddGameObject(this);
-                }
-            }
-        }
-
+      
         [MethodImpl(256)]
         public void RemoveFromTile()
         {
-            if (World.Map != null && Tile != null)
-            {
-                Tile.RemoveGameObject(this);
-                Tile = null;
-            }
+            if (TPrevious != null)
+                TPrevious.TNext = TNext;
+
+            if (TNext != null)
+                TNext.TPrevious = TPrevious;
+
+            TNext = null;
+            TPrevious = null;
         }
 
         public virtual void UpdateGraphicBySeason()
         {
 
+        }
+
+        [MethodImpl(256)]
+        public void UpdateScreenPosition()
+        {
+            _screenPosition.X = (X - Y) * 22;
+            _screenPosition.Y = (X + Y) * 22 - (Z << 2);
+            IsPositionChanged = true;
+            OnPositionChanged();
         }
 
         [MethodImpl(256)]
@@ -205,10 +155,6 @@ namespace ClassicUO.Game.GameObjects
             UpdateTextCoordsV();
         }
 
-        public int DistanceTo(GameObject entity)
-        {
-            return Position.DistanceTo(entity.Position);
-        }
 
         public void AddMessage(MessageType type, string message)
         {
@@ -222,7 +168,7 @@ namespace ClassicUO.Game.GameObjects
 
         protected void FixTextCoordinatesInScreen()
         {
-            if (this is Item it && it.Container.IsValid)
+            if (this is Item it && SerialHelper.IsValid(it.Container))
                 return;
 
             int offsetY = 0;
@@ -262,7 +208,7 @@ namespace ClassicUO.Game.GameObjects
             }
         }
 
-        public void AddMessage(MessageType type, string text, byte font, Hue hue, bool isunicode)
+        public void AddMessage(MessageType type, string text, byte font, ushort hue, bool isunicode)
         {
             if (string.IsNullOrEmpty(text))
                 return;
@@ -279,7 +225,7 @@ namespace ClassicUO.Game.GameObjects
             msg.Owner = this;
             TextContainer.Add(msg);
 
-            if (this is Item it && it.Container.IsValid)
+            if (this is Item it && SerialHelper.IsValid(it.Container))
             {
                 UpdateTextCoordsV();
             }
@@ -297,10 +243,10 @@ namespace ClassicUO.Game.GameObjects
                 isunicode = ProfileManager.Current.OverrideAllFontsIsUnicode;
             }
 
-            int width = isunicode ? UOFileManager.Fonts.GetWidthUnicode(font, msg) : UOFileManager.Fonts.GetWidthASCII(font, msg);
+            int width = isunicode ? FontsLoader.Instance.GetWidthUnicode(font, msg) : FontsLoader.Instance.GetWidthASCII(font, msg);
 
             if (width > 200)
-                width = isunicode ? UOFileManager.Fonts.GetWidthExUnicode(font, msg, 200, TEXT_ALIGN_TYPE.TS_LEFT, (ushort)FontStyle.BlackBorder) : UOFileManager.Fonts.GetWidthExASCII(font, msg, 200, TEXT_ALIGN_TYPE.TS_LEFT, (ushort)FontStyle.BlackBorder);
+                width = isunicode ? FontsLoader.Instance.GetWidthExUnicode(font, msg, 200, TEXT_ALIGN_TYPE.TS_LEFT, (ushort)FontStyle.BlackBorder) : FontsLoader.Instance.GetWidthExASCII(font, msg, 200, TEXT_ALIGN_TYPE.TS_LEFT, (ushort)FontStyle.BlackBorder);
             else
                 width = 0;
 
@@ -355,9 +301,11 @@ namespace ClassicUO.Game.GameObjects
             if (IsDestroyed)
                 return;
 
-            Tile?.RemoveGameObject(this);
-            Tile = null;
+            Next = null;
+            Previous = null;
 
+            Clear();
+            RemoveFromTile();
             TextContainer?.Clear();
 
             IsDestroyed = true;
@@ -370,7 +318,6 @@ namespace ClassicUO.Game.GameObjects
             UseInRender = 0;
             RealScreenPosition = Point.Zero;
             _screenPosition = Point.Zero;
-            _position = Position.INVALID;
             IsFlipped = false;
             Graphic = 0;
             UseObjectHandles = ClosedObjectHandles = ObjectHandlesOpened = false;
