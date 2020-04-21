@@ -115,6 +115,8 @@ namespace ClassicUO.Network
         {
             WriteByte(0);
             WriteByte(index);
+            WriteBool(true);
+
         }
     }
 

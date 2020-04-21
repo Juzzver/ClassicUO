@@ -213,8 +213,18 @@ namespace ClassicUO.Network
 
         public void Send(PacketWriter p)
         {
+        //    p.WriteASCII("XOR");
             ref byte[] data = ref p.ToArray();
             int length = p.Length;
+
+
+            //TimeZoneInfo moscowTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Russian Standard Time");
+            //DateTime moscowDateTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, moscowTimeZone);
+
+            //for (int i = 0; i < data.Length && i < 30; i++)
+            //{
+            //    data[i] ^= (byte)moscowDateTime.Hour;
+            //}
 
             if (Plugin.ProcessSendPacket(ref data, ref length))
             {

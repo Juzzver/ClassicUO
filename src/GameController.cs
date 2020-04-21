@@ -270,8 +270,8 @@ namespace ClassicUO
 
             UIManager.InitializeGameCursor();
 
-            foreach (var p in Settings.GlobalSettings.Plugins)
-                Plugin.Create(p);
+         //   foreach (var p in Settings.GlobalSettings.Plugins)
+         //       Plugin.Create(p);
             Log.Trace( "Done!");
             Log.PopIndent();
 

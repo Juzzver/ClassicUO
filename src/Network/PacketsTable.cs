@@ -189,7 +189,7 @@ namespace ClassicUO.Network
             0x0033, // 0x9D
             -1, // 0x9E
             -1, // 0x9F
-            0x0003, // 0xA0
+            0x0004, // 0xA0
             0x0009, // 0xA1
             0x0009, // 0xA2
             0x0009, // 0xA3
@@ -288,7 +288,7 @@ namespace ClassicUO.Network
 
         public static short GetPacketLength(int id)
         {
-            return _packetsTable[id];
+            return (short)(_packetsTable[id] /*+ "XOR".Length+1*/);
         }
 
         public static void AdjustPacketSizeByVersion(ClientVersions version)
