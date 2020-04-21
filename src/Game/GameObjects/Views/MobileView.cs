@@ -1,35 +1,32 @@
 #region license
-
-//  Copyright (C) 2019 ClassicUO Development Community on Github
-//
-//	This project is an alternative client for the game Ultima Online.
-//	The goal of this is to develop a lightweight client considering 
-//	new technologies.  
-//      
+// Copyright (C) 2020 ClassicUO Development Community on Github
+// 
+// This project is an alternative client for the game Ultima Online.
+// The goal of this is to develop a lightweight client considering
+// new technologies.
+// 
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-//
+// 
 //  This program is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //  GNU General Public License for more details.
-//
+// 
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 #endregion
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 using ClassicUO.Configuration;
+using ClassicUO.Data;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Scenes;
-using ClassicUO.IO;
 using ClassicUO.IO.Resources;
 using ClassicUO.Renderer;
 
@@ -70,23 +67,12 @@ namespace ClassicUO.Game.GameObjects
             }
         }
 
+
         public override bool Draw(UltimaBatcher2D batcher, int posX, int posY)
-        {
-            //if (IsDestroyed)
-            //    return false;
-
-            DrawCharacter(batcher, posX, posY);
-
-            //Engine.DebugInfo.MobilesRendered++;
-
-            return true;
-        }
-
-        private void DrawCharacter(UltimaBatcher2D batcher, int posX, int posY)
         {
             _equipConvData = null;
             _transform = false;
-            UOFileManager.Animations.SittingValue = 0;
+            AnimationsLoader.Instance.SittingValue = 0;
             FrameInfo.X = 0;
             FrameInfo.Y = 0;
             FrameInfo.Width = 0;
@@ -103,10 +89,11 @@ namespace ClassicUO.Game.GameObjects
 
             if (AuraManager.IsEnabled)
             {
-                AuraManager.Draw(batcher, drawX, drawY, ProfileManager.Current.PartyAura && World.Party.Contains(this) ? ProfileManager.Current.PartyAuraHue : (ushort)Notoriety.GetHue(NotorietyFlag));
+                AuraManager.Draw(batcher, drawX, drawY, ProfileManager.Current.PartyAura && World.Party.Contains(this) ? ProfileManager.Current.PartyAuraHue : Notoriety.GetHue(NotorietyFlag));
             }
 
             bool isHuman = IsHuman;
+            bool isGargoyle = Client.Version >= ClientVersion.CV_7000 && (Graphic == 666 || Graphic == 667 || Graphic == 0x02B7 || Graphic == 0x02B6);
 
 
             if (ProfileManager.Current.HighlightGameObjects && SelectedObject.LastObject == this)
@@ -152,7 +139,7 @@ namespace ClassicUO.Game.GameObjects
 
 
             bool isAttack = Serial == TargetManager.LastAttack;
-            bool isUnderMouse = SelectedObject.LastObject == this && TargetManager.IsTargeting;
+            bool isUnderMouse = TargetManager.IsTargeting && SelectedObject.LastObject == this;
             //bool needHpLine = false;
 
             if (this != World.Player)
@@ -171,22 +158,23 @@ namespace ClassicUO.Game.GameObjects
             bool mirror = false;
 
             ProcessSteps(out byte dir);
+            byte layerDir = dir;
 
-            UOFileManager.Animations.GetAnimDirection(ref dir, ref mirror);
+            AnimationsLoader.Instance.GetAnimDirection(ref dir, ref mirror);
             IsFlipped = mirror;
 
             ushort graphic = GetGraphicForAnimation();
             byte animGroup = GetGroupForAnimation(this, graphic, true);
             sbyte animIndex = AnimIndex;
 
-            UOFileManager.Animations.Direction = dir;
-            UOFileManager.Animations.AnimGroup = animGroup;
+            AnimationsLoader.Instance.Direction = dir;
+            AnimationsLoader.Instance.AnimGroup = animGroup;
 
             Item mount = HasEquipment ? Equipment[(int) Layer.Mount] : null;
 
             if (isHuman && mount != null)
             {
-                UOFileManager.Animations.SittingValue = 0;
+                AnimationsLoader.Instance.SittingValue = 0;
 
                 ushort mountGraphic = mount.GetGraphicForAnimation();
 
@@ -195,28 +183,40 @@ namespace ClassicUO.Game.GameObjects
                     if (hasShadow)
                     {
                         DrawInternal(batcher, this, null, drawX, drawY + 10, mirror, ref animIndex, true, graphic, isHuman);
-                        UOFileManager.Animations.AnimGroup = GetGroupForAnimation(this, mountGraphic);
+                        AnimationsLoader.Instance.AnimGroup = GetGroupForAnimation(this, mountGraphic);
                         DrawInternal(batcher, this, mount, drawX, drawY, mirror, ref animIndex, true, mountGraphic, isHuman);
                     }
                     else
-                        UOFileManager.Animations.AnimGroup = GetGroupForAnimation(this, mountGraphic);
+                        AnimationsLoader.Instance.AnimGroup = GetGroupForAnimation(this, mountGraphic);
 
                     drawY += DrawInternal(batcher, this, mount, drawX, drawY, mirror, ref animIndex, false, mountGraphic, isHuman, isMount: true);
                 }
             }
             else
             {
-                if ((UOFileManager.Animations.SittingValue = IsSitting()) != 0)
+                if ((AnimationsLoader.Instance.SittingValue = IsSitting()) != 0)
                 {
                     animGroup = (byte) PEOPLE_ANIMATION_GROUP.PAG_STAND;
                     animIndex = 0;
 
                     ProcessSteps(out dir);
-                    UOFileManager.Animations.Direction = dir;
-                    UOFileManager.Animations.FixSittingDirection(ref dir, ref mirror, ref drawX, ref drawY);
+                    AnimationsLoader.Instance.Direction = dir;
+                    AnimationsLoader.Instance.FixSittingDirection(ref dir, ref mirror, ref drawX, ref drawY);
 
-                    if (UOFileManager.Animations.Direction == 3)
-                        animGroup = 25;
+                    if (AnimationsLoader.Instance.Direction == 3)
+                    {
+                        if (IsGargoyle)
+                        {
+                            drawY -= 30;
+                            animGroup = 42;
+                        }
+                        else
+                            animGroup = 25;
+                    }
+                    else if (IsGargoyle)
+                    {
+                        animGroup = 42;
+                    }
                     else
                         _transform = true;
                 }
@@ -224,7 +224,8 @@ namespace ClassicUO.Game.GameObjects
                     DrawInternal(batcher, this, null, drawX, drawY, mirror, ref animIndex, true, graphic, isHuman);
             }
 
-            UOFileManager.Animations.AnimGroup = animGroup;
+            AnimationsLoader.Instance.AnimGroup = animGroup;
+
 
             DrawInternal(batcher, this, null, drawX, drawY, mirror, ref animIndex, false, graphic, isHuman);
 
@@ -233,7 +234,7 @@ namespace ClassicUO.Game.GameObjects
                 var equip = Equipment;
                 for (int i = 0; i < Constants.USED_LAYER_COUNT; i++)
                 {
-                    Layer layer = LayerOrder.UsedLayers[dir, i];
+                    Layer layer = LayerOrder.UsedLayers[layerDir, i];
 
                     Item item = equip[(int)layer];
 
@@ -252,7 +253,21 @@ namespace ClassicUO.Game.GameObjects
                         {
                             graphic = item.ItemData.AnimID;
 
-                            if (UOFileManager.Animations.EquipConversions.TryGetValue(Graphic, out Dictionary<ushort, EquipConvData> map))
+                            if (isGargoyle)
+                            {
+                                if (graphic == 469)
+                                {
+                                    // gargoyle robe
+                                    graphic = 342;
+                                }
+                                else if (graphic == 0x03CA)
+                                {
+                                    // gargoyle dead shroud
+                                    graphic = 0x0223;
+                                }
+                            }
+
+                            if (AnimationsLoader.Instance.EquipConversions.TryGetValue(Graphic, out Dictionary<ushort, EquipConvData> map))
                             {
                                 if (map.TryGetValue(item.ItemData.AnimID, out EquipConvData data))
                                 {
@@ -261,12 +276,21 @@ namespace ClassicUO.Game.GameObjects
                                 }
                             }
 
-                            DrawInternal(batcher, this, item, drawX, drawY, mirror, ref animIndex, false, graphic, isHuman, false);
+                            if (AnimationsLoader.Instance.SittingValue == 0 && IsGargoyle && item.ItemData.IsWeapon)
+                            {
+                                AnimationsLoader.Instance.AnimGroup = GetGroupForAnimation(this, graphic);
+                                DrawInternal(batcher, this, item, drawX, drawY, mirror, ref animIndex, false, graphic, isHuman, false);
+                                AnimationsLoader.Instance.AnimGroup = animGroup;
+                            }
+                            else
+                            {
+                                DrawInternal(batcher, this, item, drawX, drawY, mirror, ref animIndex, false, graphic, isHuman, false);
+                            }
                         }
                         else
                         {
                             if (item.ItemData.IsLight)
-                                CUOEnviroment.Client.GetScene<GameScene>().AddLight(this, this, drawX, drawY);
+                                Client.Game.GetScene<GameScene>().AddLight(this, this, drawX, drawY);
                         }
 
                         _equipConvData = null;
@@ -275,7 +299,7 @@ namespace ClassicUO.Game.GameObjects
                     {
                         if (item.ItemData.IsLight)
                         {
-                            CUOEnviroment.Client.GetScene<GameScene>().AddLight(this, this, drawX, drawY);
+                            Client.Game.GetScene<GameScene>().AddLight(this, this, drawX, drawY);
                             break;
                         }
                     }
@@ -297,35 +321,53 @@ namespace ClassicUO.Game.GameObjects
             FrameInfo.Y = Math.Abs(FrameInfo.Y);
             FrameInfo.Width = FrameInfo.X + FrameInfo.Width;
             FrameInfo.Height = FrameInfo.Y + FrameInfo.Height;
+
+            return true;
         }
 
-        private static sbyte DrawInternal(UltimaBatcher2D batcher, Mobile owner, Item entity, int x, int y, bool mirror, ref sbyte frameIndex, bool hasShadow, ushort id, bool isHuman, bool isParent = true, bool isMount = false)
+        private static sbyte DrawInternal(UltimaBatcher2D batcher,
+                                           Mobile owner,
+                                           Item entity,
+                                           int x,
+                                           int y,
+                                           bool mirror,
+                                           ref sbyte frameIndex,
+                                           bool hasShadow,
+                                           ushort id,
+                                           bool isHuman,
+                                           bool isParent = true,
+                                           bool isMount = false)
         {
-            if (id >= Constants.MAX_ANIMATIONS_DATA_INDEX_COUNT)
+            if (id >= Constants.MAX_ANIMATIONS_DATA_INDEX_COUNT || owner == null)
                 return 0;
 
             ushort hueFromFile = _viewHue;
-            byte animGroup = UOFileManager.Animations.AnimGroup;
-            ref var direction = ref UOFileManager.Animations.GetBodyAnimationGroup(ref id, ref animGroup, ref hueFromFile, isParent).Direction[UOFileManager.Animations.Direction];
-            UOFileManager.Animations.AnimID = id;
+            byte animGroup = AnimationsLoader.Instance.AnimGroup;
+
+            AnimationDirection direction = AnimationsLoader.Instance.GetBodyAnimationGroup(ref id, ref animGroup, ref hueFromFile, isParent).Direction[AnimationsLoader.Instance.Direction];
+            AnimationsLoader.Instance.AnimID = id;
 
             if (direction == null || direction.Address == -1 || direction.FileIndex == -1)
             {
-                if (!(_transform && owner != null && entity == null && !hasShadow))
+                if (!(_transform && entity == null && !hasShadow))
                     return 0;
             }
 
-            if ((direction.FrameCount == 0 || direction.Frames == null) && !UOFileManager.Animations.LoadDirectionGroup(ref direction))
+            if (direction == null || ((direction.FrameCount == 0 || direction.Frames == null) && !AnimationsLoader.Instance.LoadDirectionGroup(ref direction)))
             {
-                if (!(_transform && owner != null && entity == null && !hasShadow))
+                if (!(_transform && entity == null && !hasShadow))
                     return 0;
             }
+
+            if (direction == null)
+                return 0;
 
             direction.LastAccessTime = Time.Ticks;
 
             int fc = direction.FrameCount;
 
-            if ((fc > 0 && frameIndex >= fc) || frameIndex < 0) frameIndex = 0;
+            if ((fc > 0 && frameIndex >= fc) || frameIndex < 0)
+                frameIndex = 0;
 
             if (frameIndex < direction.FrameCount)
             {
@@ -333,7 +375,7 @@ namespace ClassicUO.Game.GameObjects
 
                 if (frame == null || frame.IsDisposed)
                 {
-                    if (!(_transform && owner != null && entity == null && !hasShadow))
+                    if (!(_transform && entity == null && !hasShadow))
                         return 0;
 
                     goto SKIP;
@@ -390,7 +432,7 @@ namespace ClassicUO.Game.GameObjects
                         if (entity == null && isHuman)
                         {
                             int frameHeight = frame?.Height ?? 61;
-                            _characterFrameStartY = y - (frame != null ? 0 : (frameHeight -4));
+                            _characterFrameStartY = y - (frame != null ? 0 : (frameHeight - 4));
                             _characterFrameHeight = frameHeight;
                             _startCharacterWaistY = (int) (frameHeight * UPPER_BODY_RATIO) + _characterFrameStartY;
                             _startCharacterKneesY = (int) (frameHeight * MID_BODY_RATIO) + _characterFrameStartY;
@@ -461,7 +503,7 @@ namespace ClassicUO.Game.GameObjects
 
                         batcher.DrawCharacterSitted(frame, x, y, mirror, h3mod, h6mod, h9mod, ref HueVector);
                     }
-                    else
+                    else if (frame != null)
                     {
                         batcher.DrawSprite(frame, x, y, mirror, ref HueVector);
 
@@ -488,10 +530,10 @@ namespace ClassicUO.Game.GameObjects
                     owner.Select(mirror ? x + frame.Width - SelectedObject.TranslatedMousePositionByViewport.X : SelectedObject.TranslatedMousePositionByViewport.X - x, SelectedObject.TranslatedMousePositionByViewport.Y - y);
 
                     if (entity != null && entity.ItemData.IsLight)
-                        CUOEnviroment.Client.GetScene<GameScene>().AddLight(owner, entity, mirror ? x + frame.Width : x, y);
+                        Client.Game.GetScene<GameScene>().AddLight(owner, entity, mirror ? x + frame.Width : x, y);
                 }
 
-                return UOFileManager.Animations.DataIndex[id].MountedHeightOffset;
+                return AnimationsLoader.Instance.DataIndex[id].MountedHeightOffset;
             }
 
             return 0;
